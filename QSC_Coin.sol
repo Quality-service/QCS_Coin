@@ -608,6 +608,24 @@ contract MintableToken is StandardToken, Ownable {
         // Отправляем эфир из хранилища пользователю, в обмен на токены
         user.transfer(returnCost);
     }
+
+    /**
+    * @dev Функция обмена всех токенов на Ether, по причине не сбора софткапа.
+    * @param user - пользователь, запросивший возврат.
+    * @param rate - текущий курс токена.
+    */
+    function returnEther(address user, uint rate) public isNotTeam(msg.sender) {
+        //Если токенов на счету данного пользователя нет - отменяем выполнение.
+        require(!isBalance(user));        
+        //Получаем количество токенов у пользователя
+        uint balance = balances[user];
+        //Обнуляем баланс пользователя
+        balances[user] = 0;
+        //Получаем количество Ether, которое мы должны вернуть пользователю
+        uint returnCost = balance.mul(1 ether).div(rate);
+        // Отправляем эфир из хранилища пользователю, в обмен на токены
+        user.transfer(returnCost);
+    }
 }
 
 
@@ -620,7 +638,7 @@ contract MintableToken is StandardToken, Ownable {
  */
 contract QSCCoin is MintableToken {
     //Название токена
-    string public name = "QSC Coin";
+    string public name = "Quality Service Coin";
     //Символ токена
     string public symbol = "QSC";
     //Дробность (количество знаков, после запятой).
@@ -675,8 +693,12 @@ contract QSCCoin is MintableToken {
 contract SaleBonuses is Ownable {
     //Верхний предел количества выпущенных токенов, при предпродаже
     uint hardcapPreIco = 90000;
-    //Верхний предел количества выпущенных токенов
+    //Верхний предел количества выпущенных на продажу токенов
     uint hardcap = 2275183;
+    //Минимальная сумма, которую нужно набрать
+    uint softCap = 2800000;
+    //Лимит коинов, которые будут розданы в баунти-программе
+    uint bountyCap = 38562;
     //Массив, хранящий лимиты бонусов
     uint[] bonusesLimits;
 
@@ -865,6 +887,23 @@ contract SaleBonuses is Ownable {
     function setHardCap(uint _hardcap) public onlyOwner {
         hardcap = _hardcap;
     }
+
+    /**
+    * @dev Позволяет владельцу установить минимальную набираемую сумму.
+    * @param _softCap Новая минимальная сумма сбора
+    */
+    function setSoftCap(uint _softCap) public onlyOwner {
+        softCap = _softCap;
+    }
+
+    /**
+    * @dev Позволяет владельцу установить новое количество токенов, которое будет роздано
+    * в ходе программы вознаграждений
+    * @param _bountyCap Новый лимит вознаграждений
+    */
+    function setBountyCap(uint _bountyCap) public onlyOwner {
+        bountyCap = _bountyCap;
+    }
 }
 
 /**
@@ -941,6 +980,8 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     event TokenSold(address recipient, uint etherAmount, uint payAmount, uint exchangerate);
     //Ивент, вызываемый, при добавлении авторизованного пользователя
     event AuthorizedCreate(address recipient, uint payAmount);
+    //Ивент, вызываемый, при завершении ICO, до набора софткапа
+    event NoSoftCupClosed();
 
 
     //Создаём экземпляр контракта QCS токена
@@ -969,13 +1010,32 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
         require(token.totalSupply() <= hardcap);
         _;
     }
+    
+    /**
+    * @dev Модификатор, разрешающий авторизированное создание токенов только до того момента, как будит
+    * достигнут верхний предел количества токенов плюс баунти.
+    */
+    modifier isUnderBountyCap() {
+        require(token.totalSupply() <= hardcap + bountyCap);
+        _;
+    }
 
     /**
     * @dev Модификатор, разрешающий отправку средств, для обмена, только после 
     * завершения хардкапа.
     */
-    modifier isMoreHardCap() {
-        require(token.totalSupply() > hardcap);
+    modifier isMoreSoftCap() {
+        require(token.totalSupply() > softCap);
+        _;
+    }
+
+    /**
+    * @dev Модификатор, разрешающий начинать обмен токенов только после того, как
+    * была завершена чеканка токенов
+    */
+    modifier isMintingFinished() {
+        //Если флаг чеканки стоит в false
+        require(!token.mintingFinished());
         _;
     }
 
@@ -996,6 +1056,15 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     */
     modifier exchangeIsOn() {
         require(token.exchangeStarted());
+        _;
+    }
+
+    /**
+    * @dev Модификатор, разрешающий вызов функции только в том случае, если
+    * софткап не был набран. 
+    */
+    modifier ifNotSoftCup() {
+        require(token.totalSupply() < softCap);
         _;
     }
 
@@ -1066,13 +1135,13 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     }
 
     /**
-    * @dev Предоставляет авторизированный доступ к созданию токенов. Используется для
-    * депозитов Bitcoin и ERC20. Может быть вызвано только авторизированным пользователем.
-    * бонусы на эти токены не начисляются.
+    * @dev Предоставляет авторизированный доступ к созданию токенов. Может быть вызвано 
+    * только авторизированным пользователем, бонусы на эти токены не начисляются. Можно
+    * создавать токены только в пределах хардкапа+баунти. Используется, для раздачи баунти. 
     * @param recipient Получатель токенов.
     * @param tokens Количество токенов, которое необходимо создать. 
     */
-    function authorizedCreateTokens(address recipient, uint tokens) public onlyAuthorized {      
+    function authorizedCreateTokens(address recipient, uint tokens) public onlyAuthorized isUnderBountyCap {      
         //Отправляем токены на счёт получателя
         token.mint(recipient, tokens);
         //Выполняем ивент авторизированного создания
@@ -1117,18 +1186,31 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     function finishMinting() public onlyOwner {
         // Записываем количество всех выданных токенов
         uint issuedTokenSupply = token.totalSupply();
-        //Рассчитываем количество командных токенов - они составят
-        //10 процентов от общей суммы токенов. Остальные токены - 90%        
-        uint teamTokensCount = issuedTokenSupply.div(9);
-        // Отправляем командные токены, на адрес, работа с которым 
-        //будет заблокирована, до наступления стадии обмена.
-        token.mint(token.teamTokens(), teamTokensCount);
-        // Ставим флаги, запрещающие чеканку новых токенов
-        token.finishMinting();
-        // Передаём владение контрактом создателю токенов
-        token.transferOwnership(owner);
-        // Вызываем событие завершения продажи токенов.
-        MainSaleClosed();
+
+        //Если ICO было завершено до набора софткапа
+        if (issuedTokenSupply < softCap) {
+            // Ставим флаги, запрещающие чеканку новых токенов
+            token.finishMinting();
+            // Передаём владение контрактом создателю токенов
+            token.transferOwnership(owner);
+            // Вызываем событие завершения продажи токенов, и начала возврата 
+            //из-за недосбора средств.
+            NoSoftCupClosed();
+        //Если всё ок, бабки собрали
+        } else {
+            //Рассчитываем количество командных токенов - они составят
+            //10 процентов от общей суммы токенов. Остальные токены - 90%        
+            uint teamTokensCount = issuedTokenSupply.div(9);
+            // Отправляем командные токены, на адрес, работа с которым 
+            //будет заблокирована, до наступления стадии обмена.
+            token.mint(token.teamTokens(), teamTokensCount);
+            // Ставим флаги, запрещающие чеканку новых токенов
+            token.finishMinting();
+            // Передаём владение контрактом создателю токенов
+            token.transferOwnership(owner);
+            // Вызываем событие завершения продажи токенов.
+            MainSaleClosed();
+        }
     }
 
     /**
@@ -1149,21 +1231,36 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     }    
 
     /**
-    * @dev Вносим токены, для операций обмена
+    * @dev Вносим токены, для операций обмена. Мы можем начать делать это 
+    * только в случае набора софткапа, и завершения чеканки токенов.
     */
-    function setTokensToRetrieve() public onlyOwner isMoreHardCap payable {        
+    function setTokensToRetrieve() public onlyOwner isMoreSoftCap isMintingFinished payable {        
         //Получаем курс обмена Ether на токены
-        uint rate = exchangeRate_.getRate("QCS");
+        uint rate = exchangeRate_.getRate("QSC");
         //Вызываем соыбтие обмена
         token.returnTokens(msg.value, rate);
     }
 
     /**
     * @dev функция возврата Ether, в обмен на коины. По сути - оболочка, 
-    * для вызова более глубокой функции.
+    * для вызова более глубокой функции. Функция доступна для вызова только
+    * после первого внесения средств на обмен.
     */
     function returnEtherFromCoins() public exchangeIsOn {
         //Запрашиваем возврат коинов, от имени отправителя сообщения
         token.getEther(msg.sender);
+    }
+
+    
+    /**
+    * @dev функция возврата Ether, в обмен на коины, в случае, если 
+    * софткап не был набран. Может быть вызвана только после завершения 
+    * продажи токенов.
+    */
+    function returnEtherFromNoSoftCup() public isMintingFinished ifNotSoftCup {
+        //Получаем курс обмена токенов на Ether
+        uint rate = exchangeRate_.getRate("ETH");
+        //Запрашиваем возврат коинов, от имени отправителя сообщения
+        token.returnEther(msg.sender, rate);
     }
 }
