@@ -780,10 +780,12 @@ contract SaleBonuses is Ownable {
     * назначаемая, в случае, если покупатель превысил HardCap.
     */
     function calculateSaleBonusWithSale(uint amount, uint count, uint rate) internal constant returns (uint purchasedTokens, uint returnAmount) {        
+        uint256 _purchasedTokens;
+        uint256 _returnAmount;
         //Текущий бонус в процентах
         uint bonus;
-        //Количество токенов, оставшихся, до текущей границы бонуса
-        uint left;
+        //Бонусная скидка. пересчитанная, для курса
+        uint rateBonus;
         //Идентификатор текущей границы в массиве
         uint8 id;       
         //Новый курс, с учётом скидки
@@ -807,80 +809,42 @@ contract SaleBonuses is Ownable {
         //количество токенов уже вышло за границы бонусов, и дальше считать уже не надо 
         if (id == 99) {       
             //Получаем количество токенов, без бонуса, и сумму возврата, в случае пресечения капа.
-            var (a, b) = calculateCapBonus(amount, count, rate, hardcap);
+            (_purchasedTokens, _returnAmount) = calculateCapBonus(amount, count, rate, hardcap);
             //Лишние переменные нужны только из-за того, что напрямую вернять результат не получится.
-            purchasedTokens = a;
-            returnAmount = b;
+            purchasedTokens = _purchasedTokens;
+            returnAmount = _returnAmount;
         //В противном случае - считаем бонусы
         } else {                
-            //Получаем в процентах новую цену, с учётгом скидки
-            bonus = 100 - bonus;
-            rateWithBonus = rate.mul(100).div(bonus);
+            //Обнуляем переменную, хранящую количество купленных токенов
+            purchasedTokens = 0;
 
-
-            //Получаем количество токенов, которое осталось до следующего лимита
-            left = bonusesLimits[id] - count;
-            //Если остаток, до следующего лимита больше количества выкупленных токенов
-            if (left >= amount) {
-                //То, просто меняем с текущим бонусом
-                amountWithBonus = (amount * (bonus + 100)) / 100; 
-            //Иначе
-            } else {
-                //Меняем с текущим бонусом
-                amountWithBonus = (left * (bonus + 100)) / 100; 
-                //Вычитаем сумму текущего бонуса
-                amount -= left;
-                //Вычитаем 5% из бонуса
-                bonus -= 5;
-                //Увеличиваем id границы
+            do {
+                //Получаем в процентах новую цену, с учётгом скидки
+                rateBonus = 100 - bonus;
+                rateWithBonus = rate.mul(100).div(rateBonus);
+                //Получаем количество токенов, купленных до капа скидки, и сумму, которая в этот лимит не вошла
+                (_purchasedTokens, _returnAmount) = calculateCapBonus(amount, count, rateWithBonus, bonusesLimits[id]);    
+                //Увеличиваем id лимита бонуса
                 id++;
-                //Считаем бонусы, посчитанные, за продажу первых токенов
-                amountWithBonus += calculateSalePercentBonuses(amount, bonus, id);
+                //Уменьшаем бонус
+                bonus -= 5;
+                //Сумму платежа заменяем остатком
+                amount = _returnAmount;
+                //Увеличиваем количество купленных токенов
+                purchasedTokens += _purchasedTokens;
+            //Цикл идёт до тех пор, пока не будет обменяна вся сумма, или не пройдём последний кап бонусов 
+            } while ((amount > 0) && (id < 5));
+
+            //Если сумма, после этого цикла ещё есть, то это значит, что мы вышли за границы бонусов.
+            //ТАким образом, остаток нам нужно просто приплюсовать, без каких либо добавлений.
+            if (amount > 0) {
+                //Получаем количество токенов, без бонуса, и сумму возврата, в случае пресечения капа.
+                (_purchasedTokens, _returnAmount) = calculateCapBonus(amount, count, rate, hardcap);                
+                //Лишние переменные нужны только из-за того, что напрямую вернять результат не получится.
+                purchasedTokens += _purchasedTokens;
+                returnAmount = _returnAmount;
             }
         }
-    }
-
-
-    /**
-    * @dev Рассчитываем бонусы, идущие при первых 4 миллионах токенов
-    * @param amount - сумма платежа пользователя. Нужна, чтобы можно было посчитать
-    * точное количество возвращаемых токенов, в пограничных случах
-    * @param bonus - текущий бонус
-    * @param id - идентификатор недостигнутой границы бонуса
-    * @return количество бонусных токенов в процентах, которые получит покупатель, за
-    * данный платёж. 
-    */
-    function calculateSalePercentBonuses(uint amount, uint bonus, uint8 id) internal constant returns (uint amountWithBonus) {
-        //Количество бонусных токенов
-        uint ctBonTokens;
-        amountWithBonus = 0;        
-        //Цикл идёт, покада не закончится оплаченная сумма токенов, или не закончится бонус
-        while ((amount > 0) && (id < 5)) {
-            //Если сумма токенов меньше ближайшей границы
-            if (amount <= bonusesLimits[id]) {
-                //Добавляем остаток с текущим бонусом
-                amountWithBonus += (amount * (bonus + 100)) / 100;
-                //Выходим из цикла
-                break;
-            //Если мы пересекли границу. Это будет только в одном случае - было куплено токенов, 
-            //на сумму большую, чем разница между границами.
-            } else {         
-                //Получаем количество токенов, находящееся между лимитами
-                ctBonTokens = bonusesLimits[id] - bonusesLimits[id - 1];
-                //Добавляем текущие бонусные токены, за данное количество купленных
-                amountWithBonus += (ctBonTokens * (bonus + 100)) / 100;
-                //Вычитаем это количество
-                amount -= ctBonTokens;
-                //Вычитаем 5% из бонуса 
-                bonus -= 5;
-            }
-            id++;
-        }            
-        
-        //Если, по окончанию этого цикла остались незащитанные токены, то значит, 
-        //что они уже вне бонуса, так что просто прибавляем их к выходной сумме.      
-        if (amount > 0)
-            amountWithBonus += amount;
     }
 
     /**
@@ -990,6 +954,8 @@ contract IcoSale is Ownable, Authorizable, SaleBonuses {
     uint public start = 1498302000; //new Date("Jun 24 2017 11:00:00 GMT").getTime() / 1000
     //Продолжительность всей продажи токенов
     uint public duration = 30;
+    //Количество токенов, розданных по программе баунти
+    uint public bountyTokensCount = 0;
 
     /**
     * @dev Позволяет владельцу установить новое время запуска токена.
@@ -1025,7 +991,6 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     //Ивент, вызываемый, при завершении ICO, до набора софткапа
     event NoSoftCupClosed();
 
-
     //Создаём экземпляр контракта QCS токена
     QSCCoin public token = new QSCCoin();
 
@@ -1058,7 +1023,7 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     * достигнут верхний предел количества токенов плюс баунти.
     */
     modifier isUnderBountyCap() {
-        require(token.totalSupply() <= hardcap + bountyCap);
+        require(bountyTokensCount <= bountyCap);
         _;
     }
 
@@ -1066,7 +1031,7 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     * @dev Модификатор, разрешающий отправку средств, для обмена, только после 
     * завершения хардкапа.
     */
-    modifier isMoreSoftCap() {
+    modifier isMoreSoftCap() { 
         require(token.totalSupply() > softCap);
         _;
     }
@@ -1135,7 +1100,7 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
         // В случае ошибки - все транзакции будут отменены.
         multisigVault.transfer(amount);
         //Вызываем ивент отправки токенов
-        TokenSold(recipient, msg.value, tokens, rate);
+        TokenSold(recipient, msg.value, purchasedTokens, rate);
     }
 
     /**
@@ -1148,6 +1113,8 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     function authorizedCreateTokens(address recipient, uint tokens) public onlyAuthorized isUnderBountyCap {      
         //Отправляем токены на счёт получателя
         token.mint(recipient, tokens);
+        //Добавляем созданные токены, к счётчику созданных баунти токенов
+        bountyTokensCount += tokens;
         //Выполняем ивент авторизированного создания
         AuthorizedCreate(recipient, tokens);
     }
@@ -1202,9 +1169,14 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
             NoSoftCupClosed();
         //Если всё ок, бабки собрали
         } else {
+            //Адрес хранения командных токенов должен существовать. Иначе - ошибка.
+            require(token.teamTokens() != 0);
+            //Вычитаем из общего количества токенов те, которые были розданы в ходе 
+            //программы вознаграждения.
+            issuedTokenSupply -= bountyTokensCount;
             //Рассчитываем количество командных токенов - они составят
-            //10 процентов от общей суммы токенов. Остальные токены - 90%        
-            uint teamTokensCount = issuedTokenSupply.div(9);
+            //10 процентов от общей суммы проданных токенов.         
+            uint teamTokensCount = issuedTokenSupply.div(9); 
             // Отправляем командные токены, на адрес, работа с которым 
             //будет заблокирована, до наступления стадии обмена.
             token.mint(token.teamTokens(), teamTokensCount);
@@ -1266,5 +1238,14 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
         uint rate = exchangeRate_.getRate("ETH");
         //Запрашиваем возврат коинов, от имени отправителя сообщения
         token.returnEther(msg.sender, rate);
+    }
+
+    /**
+    * @dev Функция принимает токены на данный счёт, для возврата средств, 
+    * в случае ненабора софткапа. 
+    */
+    function getEtherToReturn() public payable {
+        //тут даже вызывать ничего не надо. Просто бабки прийдут на счёт 
+        //контракта, и будут возвращаться пользователям в обмен на токены. 
     }
 }
