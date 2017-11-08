@@ -691,6 +691,8 @@ contract QSCCoin is MintableToken {
 * @dev Контракт, выполняющий рассчёты по бонусам предпродаж токенов
 */
 contract SaleBonuses is Ownable {
+    //Подключение библиотеки безопасной математики
+    using SafeMath for uint;
     //Верхний предел количества выпущенных токенов, при предпродаже
     uint hardcapPreIco = 90000;
     //Верхний предел количества выпущенных на продажу токенов
@@ -715,6 +717,129 @@ contract SaleBonuses is Ownable {
         bonusesLimits[3] = 178571;
         bonusesLimits[4] = 188679;
     }
+
+
+    /**
+    * @dev Рассчитываем бонус токенов, получаемых при предпродаже токенов
+    * @param amount - сумма платежа пользователя. Нужна, чтобы можно было посчитать
+    * точное количество возвращаемых токенов, в пограничных случах
+    * @param count - текущее общее количество токенов
+    * @param rate - сколько токенов мы получим за 1 Ether.
+    * @return количество токенов, которые получит покупатель, за данный платёж, с учётом бонусов Pre-Ico, и сумма возврата,
+    * назначаемая, в случае, если покупатель превысил HardCapPreIco.
+    */
+    function calculateSaleBonusWithPreSale(uint amount, uint count, uint rate) private  constant returns (uint256 purchasedTokens, uint256 returnAmount) {
+        //Получаем новый курс, с 50 процентной скидкой (за 1 Ether получаем в 2 раза больше токенов)
+        uint rateWithBonus = rate.mul(2);
+        //Получаем количество токенов, с учётом бонуса, и сумму возврата, в случае пресечения капа.
+        var (a, b) = calculateCapBonus(amount, count, rateWithBonus, hardcapPreIco);
+        //Лишние переменные нужны только из-за того, что напрямую вернять результат не получится.
+        purchasedTokens = a;
+        returnAmount = b;
+    }
+
+    /**
+    * @dev Рассчитываем количество токенов, получаемых пользователем, и проверяем их на пересечение капа
+    * @param amount - сумма платежа пользователя. Нужна, чтобы можно было посчитать
+    * точное количество возвращаемых токенов, в пограничных случах
+    * @param count - текущее общее количество токенов
+    * @param rate - сколько токенов мы получим за 1 Ether.
+    * @param _hardCap - кап, на пересечение которого нужно проверить сумму покупки
+    * @return количество токенов, которые получит покупатель, за данный платёж, с учётом бонусов Pre-Ico, и сумма возврата,
+    * назначаемая, в случае, если покупатель превысил HardCapPreIco.
+    */
+    function calculateCapBonus(uint amount, uint count, uint rate, uint _hardCap) private constant returns (uint purchasedTokens, uint returnAmount) {
+        //Получаем количество токенов, которое должен получить покупатель, с учётом скидки
+        uint tokens = rate.mul(amount).div(1 ether);
+        //Количество токенов, оставшихся, до текущей границы бонуса
+        uint left = _hardCap - count;
+        //Если сумма на обмен больше остатка, до границы капа 
+        if (tokens > left) {
+            //Начисляем токенов, на сумму остатка, до капа Pre-Sale.
+            purchasedTokens = left;
+            //Вычитаем добавленные токены
+            tokens -= left;
+            //Получаем сумму Ether без бонуса, за токены, которые не вошли в кап.
+            returnAmount = tokens.mul(1 ether).div(rate);
+        //Если сумма меньше или равна остатку, то добавляем её с бонусом полностью
+        } else {  
+            //Выставляем токены
+            purchasedTokens = tokens;
+            //И нулевую сумму возврата 
+            returnAmount = 0;
+        }
+    }
+
+    /**
+    * @dev Рассчитываем бонус токенов, получаемых при начале продажи токенов
+    * @param amount - сумма платежа пользователя. Нужна, чтобы можно было посчитать
+    * точное количество возвращаемых токенов, в пограничных случах
+    * @param count - текущее общее количество токенов
+    * @param rate - сколько токенов мы получим за 1 Ether.
+    * @return количество токенов, которые получит покупатель, за данный платёж, с учётом бонусов Ico, и сумма возврата,
+    * назначаемая, в случае, если покупатель превысил HardCap.
+    */
+    function calculateSaleBonusWithSale(uint amount, uint count, uint rate) internal constant returns (uint purchasedTokens, uint returnAmount) {        
+        //Текущий бонус в процентах
+        uint bonus;
+        //Количество токенов, оставшихся, до текущей границы бонуса
+        uint left;
+        //Идентификатор текущей границы в массиве
+        uint8 id;       
+        //Новый курс, с учётом скидки
+        uint rateWithBonus;
+        //Ставим изначальный бонус в 20%
+        bonus = 20;
+        //Ставим идентификатору изначально невозможное значение
+        id = 99;        
+        //Цикл идёт до тех пор, пока мы не проверим все возможные лимиты
+        for (uint8 i = 1; i < 5; i++) {
+            //Если текущее количество токенов меньше следующего лимита
+            if (count < bonusesLimits[i]) {
+                //Запоминаем id лимита, и выходим из цыкла
+                id = i;
+                break;
+            }
+            bonus -= 5;
+        }
+
+        //Если в цикле id не был установлен, то значит, что текущее общее
+        //количество токенов уже вышло за границы бонусов, и дальше считать уже не надо 
+        if (id == 99) {       
+            //Получаем количество токенов, без бонуса, и сумму возврата, в случае пресечения капа.
+            var (a, b) = calculateCapBonus(amount, count, rate, hardcap);
+            //Лишние переменные нужны только из-за того, что напрямую вернять результат не получится.
+            purchasedTokens = a;
+            returnAmount = b;
+        //В противном случае - считаем бонусы
+        } else {                
+            //Получаем в процентах новую цену, с учётгом скидки
+            bonus = 100 - bonus;
+            rateWithBonus = rate.mul(100).div(bonus);
+
+
+            //Получаем количество токенов, которое осталось до следующего лимита
+            left = bonusesLimits[id] - count;
+            //Если остаток, до следующего лимита больше количества выкупленных токенов
+            if (left >= amount) {
+                //То, просто меняем с текущим бонусом
+                amountWithBonus = (amount * (bonus + 100)) / 100; 
+            //Иначе
+            } else {
+                //Меняем с текущим бонусом
+                amountWithBonus = (left * (bonus + 100)) / 100; 
+                //Вычитаем сумму текущего бонуса
+                amount -= left;
+                //Вычитаем 5% из бонуса
+                bonus -= 5;
+                //Увеличиваем id границы
+                id++;
+                //Считаем бонусы, посчитанные, за продажу первых токенов
+                amountWithBonus += calculateSalePercentBonuses(amount, bonus, id);
+            }
+        }
+    }
+
 
     /**
     * @dev Рассчитываем бонусы, идущие при первых 4 миллионах токенов
@@ -758,117 +883,34 @@ contract SaleBonuses is Ownable {
             amountWithBonus += amount;
     }
 
-
-    /**
-    * @dev Рассчитываем бонус токенов, получаемых при предпродаже токенов
-    * @param amount - сумма платежа пользователя. Нужна, чтобы можно было посчитать
-    * точное количество возвращаемых токенов, в пограничных случах
-    * @param count - текущее общее количество токенов
-    * @return количество бонусных токенов в процентах, которые получит покупатель, за
-    * данный платёж. 
-    */
-    function calculateSaleBonusWithPreSale(uint amount, uint count) private  constant returns (uint amountWithBonus) {
-        //Количество токенов, оставшихся, до текущей границы бонуса
-        uint left;
-        //Получаем количество токенов, оставшихся, до текущей границы бонуса
-        left = hardcapPreIco - count;
-        //Если сумма на обмен больше остатка, до границы бонуса 
-        if (amount > left) {
-            //Добавляем 50% бонус, для суммы, которая для него является остатком
-            amountWithBonus = (left * 150) / 100;
-            //Вычитаем уже посчитанные токены
-            amount -= left;
-            //Добавляем бонусы, посчитанные, за продажу первых токенов
-            amountWithBonus += calculateSalePercentBonuses(amount, 20, 1);
-        //Если сумма меньше или равна остатку, то добавляем её с бонусом полностью
-        } else {
-            amountWithBonus = (amount * 150) / 100; 
-        }
-    }
-
-    /**
-    * @dev Рассчитываем бонус токенов, получаемых при начале продажи токенов
-    * @param amount - сумма платежа пользователя. Нужна, чтобы можно было посчитать
-    * точное количество возвращаемых токенов, в пограничных случах
-    * @param count - текущее общее количество токенов
-    * @return количество бонусных токенов в процентах, которые получит покупатель, за
-    * данный платёж. 
-    */
-    function calculateSaleBonusWithSale(uint amount, uint count) internal constant returns (uint amountWithBonus) {
-        
-        //Эта функция вызывается только если значения бонуса будет больше нуля, так что
-        //делать проверку на это тут не имеет смысла.
-        
-        //Текущий бонус в процентах
-        uint bonus;
-        //Количество токенов, оставшихся, до текущей границы бонуса
-        uint left;
-        //Идентификатор текущей границы в массиве
-        uint8 id;
-        //Ставим изначальный бонус в 20%
-        bonus = 20;
-        //Ставим идентификатору изначально невозможное значение
-        id = 99;        
-        //Цикл идёт до тех пор, пока мы не проверим все возможные лимиты
-        for (uint8 i = 1; i < 5; i++) {
-            //Если текущее количество токенов меньше следующего лимита
-            if (count < bonusesLimits[i]) {
-                //Запоминаем id лимита, и выходим из цыкла
-                id = i;
-                break;
-            }
-            bonus -= 5;
-        }
-
-        //Если в цикле id не был установлен, то значит, что текущее общее
-        //количество токенов уже вышло за границы бонусов, и дальше считать уже не надо 
-        if (id == 99) {
-            amountWithBonus = amount;
-        //В противном случае - считаем бонусы
-        } else {                
-            //Получаем количество токенов, которое осталось до следующего лимита
-            left = bonusesLimits[id] - count;
-            //Если остаток, до следующего лимита больше количества выкупленных токенов
-            if (left >= amount) {
-                //То, просто меняем с текущим бонусом
-                amountWithBonus = (amount * (bonus + 100)) / 100; 
-            //Иначе
-            } else {
-                //Меняем с текущим бонусом
-                amountWithBonus = (left * (bonus + 100)) / 100; 
-                //Вычитаем сумму текущего бонуса
-                amount -= left;
-                //Вычитаем 5% из бонуса
-                bonus -= 5;
-                //Увеличиваем id границы
-                id++;
-                //Считаем бонусы, посчитанные, за продажу первых токенов
-                amountWithBonus += calculateSalePercentBonuses(amount, bonus, id);
-            }
-        }
-    }
     /**
     * @dev Рассчитываем бонус токенов, получаемых в самом начале продажи
     * @param amount - сумма платежа пользователя. Нужна, чтобы можно было посчитать
     * точное количество возвращаемых токенов, в пограничных случах
     * @param count - Текущее количество проданных токенов
-    * @return количество бонусных токенов в процентах, которые получит покупатель, за
-    * данный платёж. 
+    * @param rate - Сколько токенов мы получим за 1 Ether.
+    * @return Количество токенов, которое получит покупатель за свой платёж, с учётом скидок, и сумма возврата, для случаев превышения
+    * хардкапа.
     */
-    function calculateSaleBonus(uint amount, uint count) public constant returns (uint amountWithBonus) {
+    function calculateSaleBonus(uint amount, uint count, uint rate) public constant returns (uint purchasedTokens, uint returnAmount) {     
+        uint256 _purchasedTokens;
+        uint256 _returnAmount; 
         //Если текущее количество токенов меньше пресейлового количества
         if (count < hardcapPreIco) {
-            //ПОлучаем количество наменяных токенов, с учётом бонуса предпродажи.
-            amountWithBonus = calculateSaleBonusWithPreSale(amount, count);
+            //ПОлучаем количество наменяных токенов, с учётом бонуса предпродажи. И сумму возврата, для случая превышения хардкапа.
+            (_purchasedTokens, _returnAmount) = calculateSaleBonusWithPreSale(amount, count);
         //Иначе, если екущее количество токенов меньше крайнего бонуса, то добавляем бонус первых покупок
         } else if (count < bonusesLimits[4]) {
             //Считаем бонусы, за продажу первых токенов
-            amountWithBonus = calculateSaleBonusWithSale(amount, count);
+            (_purchasedTokens, _returnAmount) = calculateSaleBonusWithSale(amount, count); 
         //Иначе
         } else {
-            //Бонус просто равен нулю. Т.е. возвращаем ту же сумму
-            amountWithBonus = amount;
+            //Получаем количество токенов, без бонуса, и сумму возврата, в случае пресечения капа.
+            (_purchasedTokens, _returnAmount) = calculateCapBonus(amount, count, rate, hardcap);
         }
+        //Лишние переменные нужны только из-за того, что напрямую вернять результат не получится.
+        purchasedTokens = _purchasedTokens;
+        returnAmount = _returnAmount;
     }
 
     
@@ -974,7 +1016,7 @@ contract IcoSale is Ownable, Authorizable, SaleBonuses {
  * [{"constant":false,"inputs":[{"name":"_multisigVault","type":"address"}],"name":"setMultisigVault","outputs":[],"payable":false,"type":"function"},{"constant":true,"inputs":[{"name":"authorizerIndex","type":"uint256"}],"name":"getAuthorizer","outputs":[{"name":"","type":"address"}],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"exchangeRate","outputs":[{"name":"","type":"address"}],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"altDeposits","outputs":[{"name":"","type":"uint256"}],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"recipient","type":"address"},{"name":"tokens","type":"uint256"}],"name":"authorizedCreateTokens","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[],"name":"finishMinting","outputs":[],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"owner","outputs":[{"name":"","type":"address"}],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"_exchangeRate","type":"address"}],"name":"setExchangeRate","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"_token","type":"address"}],"name":"retrieveTokens","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"totalAltDeposits","type":"uint256"}],"name":"setAltDeposit","outputs":[],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"start","outputs":[{"name":"","type":"uint256"}],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"recipient","type":"address"}],"name":"createTokens","outputs":[],"payable":true,"type":"function"},{"constant":false,"inputs":[{"name":"_addr","type":"address"}],"name":"addAuthorized","outputs":[],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"multisigVault","outputs":[{"name":"","type":"address"}],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"_hardcap","type":"uint256"}],"name":"setHardCap","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"_start","type":"uint256"}],"name":"setStart","outputs":[],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"token","outputs":[{"name":"","type":"address"}],"payable":false,"type":"function"},{"constant":true,"inputs":[{"name":"_addr","type":"address"}],"name":"isAuthorized","outputs":[{"name":"","type":"bool"}],"payable":false,"type":"function"},{"payable":true,"type":"fallback"},{"anonymous":false,"inputs":[{"indexed":false,"name":"recipient","type":"address"},{"indexed":false,"name":"ether_amount","type":"uint256"},{"indexed":false,"name":"pay_amount","type":"uint256"},{"indexed":false,"name":"exchangerate","type":"uint256"}],"name":"TokenSold","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"name":"recipient","type":"address"},{"indexed":false,"name":"pay_amount","type":"uint256"}],"name":"AuthorizedCreate","type":"event"},{"anonymous":false,"inputs":[],"name":"MainSaleClosed","type":"event"}]
  */
 contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
-    //Подключение контракта безопасной математики
+    //Подключение библиотеки безопасной математики
     using SafeMath for uint;
     //Ивент, вызываемый при продаже токенов
     event TokenSold(address recipient, uint etherAmount, uint payAmount, uint exchangerate);
@@ -1068,36 +1110,6 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
         _;
     }
 
-
-    /**
-    * @dev Функция, проверяющая, что сумма не выходит за границы
-    * лимита PRE-ICO или ICO
-    * @return Возвращает количество токенов, превышающее лимит
-    */
-    function testOwerflow (uint tokens) private constant returns (uint overLimit) {
-        // Записываем количество всех выданных токенов
-        uint issuedTokenSupply = token.totalSupply();
-        //Считаем количество токенов, после покупки
-        uint count = issuedTokenSupply + tokens;
-        //Ставим превышения лимита на дефолтный 0
-        overLimit = 0;
-        //Если у нас сейчас идёт Pre-ico
-        if (now > startPreIco && now < startPreIco + durationPreIco * 1 days) {
-            //В случае, если мы превысили хардкап
-            if (count > hardcapPreIco) {
-                //Вычитаем остаток
-                overLimit = hardcapPreIco - count;
-            }
-        //Если у нас сейчас идёт ICO
-        } else if (now > start && now < start + duration * 1 days) {
-            //В случае, если мы превысили хардкап
-            if (count > hardcap) {
-                //Вычитаем остаток
-                overLimit = hardcap - count;
-            }
-        }
-    }
-
     /**
     * @dev Позволяет кому угодно создавать токены, путём внесения Ether.
     * @param recipient Получатель, на счёт которого поступят токены
@@ -1105,31 +1117,23 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     function createTokens(address recipient) public isUnderHardCap saleIsOn payable {
         //Получаем курс обмена токенов на Ether
         uint rate = exchangeRate_.getRate("ETH");
-        //Получаем количество токенов, которое должен получить покупатель
-        //msg.value - сумма в wei, поэтому делим на Ether, чтобы получить значение в нём.
-        uint tokens = rate.mul(msg.value).div(1 ether);
-        //Плюсуем бонусные токены
-        tokens = calculateSaleBonus(tokens, token.totalSupply());        
-        //Проверяем, не перешли-ли мы границу лимита
-        uint overLimit = testOwerflow(tokens);
+        //Получаем сумму платежа пользователя
+        uint amount = msg.value;
+        //Считаем количество токенов с учётом бонуса, и сумму, вышедшую за кап.
+        var (purchasedTokens, returnAmount) = calculateSaleBonus(amount, token.totalSupply(), rate);        
         //Если мы перешли лимит
-        if (overLimit > 0) {
-            //Уменьшаем количество выдаваемых токенов, до необходимого
-            tokens -= overLimit;
-            //Возвращаем покупателю часть суммы, соответствующую
-            //Количеству токенов, не вошедших в лимит 
-            //Получаем Eth из количества токенов
-            uint returnCost = overLimit.div(rate);            
+        if (returnAmount > 0) {               
             // Отправляем эфир со счёта контракта обратно покупателю. 
             // В случае ошибки - все транзакции будут отменены.
-            msg.sender.transfer(returnCost);
+            msg.sender.transfer(returnAmount);
+            //Вычитаем сумму возврата, из суммы платежа пользователя
+            amount -= returnAmount;
         }
-
         //Отправляем токены на счёт получателя
-        token.mint(recipient, tokens);        
+        token.mint(recipient, purchasedTokens);        
         // Отправляем эфир со счёта покупателя в хранилище. 
         // В случае ошибки - все транзакции будут отменены.
-        multisigVault.transfer(msg.value);
+        multisigVault.transfer(amount);
         //Вызываем ивент отправки токенов
         TokenSold(recipient, msg.value, tokens, rate);
     }
