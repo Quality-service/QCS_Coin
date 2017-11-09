@@ -586,7 +586,7 @@ contract MintableToken is StandardToken, Ownable {
             //тем самым, получая количество токенов, которое мы обменяем 
             //для данного пользователя, в зависимости от соотношения его
             //доли токенов к их общему количеству. 
-            count = (fullCount * balances[user]) / retreiveCount;
+            count = (retreiveCount * balances[user]) / fullCount;
 
             //Если, количество токенов у пользователя меньше, чем
             //Количество токенов на возврат
