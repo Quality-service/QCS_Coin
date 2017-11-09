@@ -698,7 +698,7 @@ contract SaleBonuses is Ownable {
     //Верхний предел количества выпущенных на продажу токенов
     uint hardcap = 2275183;
     //Минимальная сумма, которую нужно набрать
-    uint softCap = 2800000;
+    uint softCap = 479545;
     //Лимит коинов, которые будут розданы в баунти-программе
     uint bountyCap = 38562;
     //Массив, хранящий лимиты бонусов
@@ -748,7 +748,7 @@ contract SaleBonuses is Ownable {
     * @return количество токенов, которые получит покупатель, за данный платёж, с учётом бонусов Pre-Ico, и сумма возврата,
     * назначаемая, в случае, если покупатель превысил HardCapPreIco.
     */
-    function calculateCapBonus(uint amount, uint count, uint rate, uint _hardCap) private constant returns (uint purchasedTokens, uint returnAmount) {
+    function calculateCapBonus(uint amount, uint count, uint rate, uint _hardCap) private pure returns (uint purchasedTokens, uint returnAmount) {
         //Получаем количество токенов, которое должен получить покупатель, с учётом скидки
         uint tokens = rate.mul(amount).div(1 ether);
         //Количество токенов, оставшихся, до текущей границы бонуса
@@ -862,11 +862,11 @@ contract SaleBonuses is Ownable {
         //Если текущее количество токенов меньше пресейлового количества
         if (count < hardcapPreIco) {
             //ПОлучаем количество наменяных токенов, с учётом бонуса предпродажи. И сумму возврата, для случая превышения хардкапа.
-            (_purchasedTokens, _returnAmount) = calculateSaleBonusWithPreSale(amount, count);
+            (_purchasedTokens, _returnAmount) = calculateSaleBonusWithPreSale(amount, count, rate);
         //Иначе, если екущее количество токенов меньше крайнего бонуса, то добавляем бонус первых покупок
         } else if (count < bonusesLimits[4]) {
             //Считаем бонусы, за продажу первых токенов
-            (_purchasedTokens, _returnAmount) = calculateSaleBonusWithSale(amount, count); 
+            (_purchasedTokens, _returnAmount) = calculateSaleBonusWithSale(amount, count, rate); 
         //Иначе
         } else {
             //Получаем количество токенов, без бонуса, и сумму возврата, в случае пресечения капа.
