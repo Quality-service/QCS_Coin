@@ -626,6 +626,20 @@ contract MintableToken is StandardToken, Ownable {
         // Отправляем эфир из хранилища пользователю, в обмен на токены
         user.transfer(returnCost);
     }
+
+    /**
+    * @dev Проверка того, что пользователь не имеет на счету средств, при
+    * переводе к нему на счёт. 
+    * param user - адрес пользователя
+    */
+    function testReturnIdFromTransfer(address user) internal {
+        //В случае, если на счету у пользователя нет средств,
+        //и обмены уже были запущенны.
+        if (!isBalance(user) && exchangeStarted) {
+            //Говорим, что обмены у него пойдут только со следующего
+            returnEtherList[user] = retreiveList.length;
+        }
+    }
 }
 
 
@@ -668,6 +682,9 @@ contract QSCCoin is MintableToken {
     * @param _value КОличество передаваемых токенов
     */
     function transfer(address _to, uint _value) public hasStartedTrading isNotTeam(msg.sender) {
+        //В случае, если баланс пользователя на нуле, и обмены уже идут
+        //этот пользователь будет получать возвраты начиная только с текущего
+        testReturnIdFromTransfer(_to);
         /*
             Ключевое слово {super} даёт прямой доступ к родительскому договору
         */  
@@ -682,6 +699,9 @@ contract QSCCoin is MintableToken {
     * @param _value сумма токенов, для отправки
     */
     function transferFrom(address _from, address _to, uint _value) public hasStartedTrading isNotTeam(msg.sender) {
+        //В случае, если баланс пользователя на нуле, и обмены уже идут
+        //этот пользователь будет получать возвраты начиная только с текущего
+        testReturnIdFromTransfer(_to);
         //Вызывает функцию transferFrom от StandardToken (как я понял). По сути у нас получилась обёртка.
         super.transferFrom(_from, _to, _value);  
     }    
