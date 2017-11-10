@@ -698,7 +698,7 @@ contract SaleBonuses is Ownable {
     //Верхний предел количества выпущенных на продажу токенов
     uint hardcap = 2275183;
     //Минимальная сумма, которую нужно набрать
-    uint softCap = 479545;
+    uint softCap = 500583;
     //Лимит коинов, которые будут розданы в баунти-программе
     uint bountyCap = 38562;
     //Массив, хранящий лимиты бонусов
@@ -712,10 +712,10 @@ contract SaleBonuses is Ownable {
         bonusesLimits.length = 5;
         //Нулевое значение нужно для упрощения функции рассчёта
         bonusesLimits[0] = 0;
-        bonusesLimits[1] = 158730;
-        bonusesLimits[2] = 166666;
-        bonusesLimits[3] = 178571;
-        bonusesLimits[4] = 188679;
+        bonusesLimits[1] = 188679;
+        bonusesLimits[2] = 367250;
+        bonusesLimits[3] = 533916;
+        bonusesLimits[4] = 692646;
     }
 
 
@@ -853,24 +853,28 @@ contract SaleBonuses is Ownable {
     * точное количество возвращаемых токенов, в пограничных случах
     * @param count - Текущее количество проданных токенов
     * @param rate - Сколько токенов мы получим за 1 Ether.
+    * @param preIco - Флаг, показывающий, какая часть распродажи идёт. True - PreIco, False - Ico.
     * @return Количество токенов, которое получит покупатель за свой платёж, с учётом скидок, и сумма возврата, для случаев превышения
     * хардкапа.
     */
-    function calculateSaleBonus(uint amount, uint count, uint rate) public constant returns (uint purchasedTokens, uint returnAmount) {     
+    function calculateSaleBonus(uint amount, uint count, uint rate, bool preIco) public constant returns (uint purchasedTokens, uint returnAmount) {     
         uint256 _purchasedTokens;
         uint256 _returnAmount; 
-        //Если текущее количество токенов меньше пресейлового количества
-        if (count < hardcapPreIco) {
+        //Если идёт PreIco, то считаем бонусы, там безбонусных токенов нету.
+        if (preIco) {
             //ПОлучаем количество наменяных токенов, с учётом бонуса предпродажи. И сумму возврата, для случая превышения хардкапа.
             (_purchasedTokens, _returnAmount) = calculateSaleBonusWithPreSale(amount, count, rate);
-        //Иначе, если екущее количество токенов меньше крайнего бонуса, то добавляем бонус первых покупок
-        } else if (count < bonusesLimits[4]) {
-            //Считаем бонусы, за продажу первых токенов
-            (_purchasedTokens, _returnAmount) = calculateSaleBonusWithSale(amount, count, rate); 
-        //Иначе
+        //Если уже начался ICO, то тут всё сложнее
         } else {
-            //Получаем количество токенов, без бонуса, и сумму возврата, в случае пресечения капа.
-            (_purchasedTokens, _returnAmount) = calculateCapBonus(amount, count, rate, hardcap);
+            //Если мы ещё не дошли до суммы, за которой бонусы заканчиваются, то
+            if (count < bonusesLimits[4]) {
+                //Считаем бонусы, за продажу первых токенов
+                (_purchasedTokens, _returnAmount) = calculateSaleBonusWithSale(amount, count, rate); 
+            //Если этот лимит преодалён, просто проверяем на кап.
+            } else {            
+                //Получаем количество токенов, без бонуса, и сумму возврата, в случае пресечения капа.
+                (_purchasedTokens, _returnAmount) = calculateCapBonus(amount, count, rate, hardcap);
+            }
         }
         //Лишние переменные нужны только из-за того, что напрямую вернять результат не получится.
         purchasedTokens = _purchasedTokens;
@@ -924,6 +928,8 @@ contract PreIcoSale is Ownable, Authorizable, SaleBonuses {
     uint public startPreIco = 1498302000; //new Date("Jun 24 2017 11:00:00 GMT").getTime() / 1000
     //Продолжительность всей предпродажи токенов
     uint public durationPreIco = 30;
+    //Количество токенов, выпущенных в Pre-Ico
+    uint public preIcoCountTokens = 0;
 
     /**
     * @dev Позволяет владельцу установить новое время запуска токена.
@@ -956,6 +962,8 @@ contract IcoSale is Ownable, Authorizable, SaleBonuses {
     uint public duration = 30;
     //Количество токенов, розданных по программе баунти
     uint public bountyTokensCount = 0;
+    //Количество токенов, выпущенных в Ico
+    uint public icoCountTokens = 0;
 
     /**
     * @dev Позволяет владельцу установить новое время запуска токена.
@@ -1001,24 +1009,6 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     ExchangeRate public exchangeRate_;
 
     /**
-    * @dev Модификатор, разрешающий создание токенов только до того момента, как будит
-    * достигнут верхний предел количества токенов
-    */
-    modifier isUnderHardCapPreIco() {
-        require(token.totalSupply() <= hardcapPreIco);
-        _;
-    }
-    
-    /**
-    * @dev Модификатор, разрешающий создание токенов только до того момента, как будит
-    * достигнут верхний предел количества токенов
-    */
-    modifier isUnderHardCap() {
-        require(token.totalSupply() <= hardcap);
-        _;
-    }
-    
-    /**
     * @dev Модификатор, разрешающий авторизированное создание токенов только до того момента, как будит
     * достигнут верхний предел количества токенов плюс баунти.
     */
@@ -1029,10 +1019,18 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
 
     /**
     * @dev Модификатор, разрешающий отправку средств, для обмена, только после 
-    * завершения хардкапа.
+    * завершения софткапа.
     */
     modifier isMoreSoftCap() { 
-        require(token.totalSupply() > softCap);
+        require(icoCountTokens > softCap);
+        _;
+    }
+    /**
+    * @dev Модификатор, разрешающий вызов функции только в том случае, если
+    * софткап не был набран. 
+    */
+    modifier ifNotSoftCup() {
+        require(icoCountTokens < softCap);
         _;
     }
 
@@ -1046,15 +1044,26 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
         _;
     }
 
+
+        
     /**
     * @dev Модификатор, разрешающий создание токенов, только после того, как
     * время продажи настанет
     */
     modifier saleIsOn() {
-        //Проверяем, что запущен либо PRE-ICO, либо ICO
-        require(
-            (now > startPreIco && now < startPreIco + durationPreIco * 1 days) ||
-            (now > start && now < start + duration * 1 days));
+        //Если сейчас сроки PRE-ICO
+        if (now > startPreIco && now < startPreIco + durationPreIco * 1 days) {
+            //Проверяем на кап
+            require(preIcoCountTokens <= hardcapPreIco);
+        //Если сейчас сроки ICO
+        } else if (now > start && now < start + duration * 1 days) {
+            //Проверяем на кап
+            require(icoCountTokens <= hardcap);
+        //Если мы вне сроков
+        } else {
+            //Тупо отменяем
+            require(false);
+        }
         _;
     }
 
@@ -1066,26 +1075,34 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
         _;
     }
 
-    /**
-    * @dev Модификатор, разрешающий вызов функции только в том случае, если
-    * софткап не был набран. 
-    */
-    modifier ifNotSoftCup() {
-        require(token.totalSupply() < softCap);
-        _;
-    }
+
+  
 
     /**
     * @dev Позволяет кому угодно создавать токены, путём внесения Ether.
     * @param recipient Получатель, на счёт которого поступят токены
     */
-    function createTokens(address recipient) public isUnderHardCap saleIsOn payable {
+    function createTokens(address recipient) public saleIsOn payable {
         //Получаем курс обмена токенов на Ether
         uint rate = exchangeRate_.getRate("ETH");
         //Получаем сумму платежа пользователя
         uint amount = msg.value;
-        //Считаем количество токенов с учётом бонуса, и сумму, вышедшую за кап.
-        var (purchasedTokens, returnAmount) = calculateSaleBonus(amount, token.totalSupply(), rate);        
+
+        uint256 purchasedTokens = 0;
+        uint256 returnAmount = 0;
+
+        //Если идёт pre-ico
+        if (now > startPreIco && now < startPreIco + durationPreIco * 1 days) {            
+            //Считаем количество токенов с учётом бонуса, и сумму, вышедшую за кап.
+            (purchasedTokens, returnAmount) = calculateSaleBonus(amount, preIcoCountTokens, rate, true);        
+            preIcoCountTokens += purchasedTokens;
+        //Если идёт Ico
+        } else if (now > start && now < start + duration * 1 days) {            
+            //Считаем количество токенов с учётом бонуса, и сумму, вышедшую за кап.
+            (purchasedTokens, returnAmount) = calculateSaleBonus(amount, icoCountTokens, rate, false);        
+            icoCountTokens += purchasedTokens;
+        } 
+
         //Если мы перешли лимит
         if (returnAmount > 0) {               
             // Отправляем эфир со счёта контракта обратно покупателю. 
@@ -1094,8 +1111,11 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
             //Вычитаем сумму возврата, из суммы платежа пользователя
             amount -= returnAmount;
         }
-        //Отправляем токены на счёт получателя
-        token.mint(recipient, purchasedTokens);        
+        //Если есть хоть один купленный токен
+        if (purchasedTokens > 0) {
+            //Отправляем токены на счёт получателя
+            token.mint(recipient, purchasedTokens);  
+        }      
         // Отправляем эфир со счёта покупателя в хранилище. 
         // В случае ошибки - все транзакции будут отменены.
         multisigVault.transfer(amount);
@@ -1106,7 +1126,7 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     /**
     * @dev Предоставляет авторизированный доступ к созданию токенов. Может быть вызвано 
     * только авторизированным пользователем, бонусы на эти токены не начисляются. Можно
-    * создавать токены только в пределах хардкапа+баунти. Используется, для раздачи баунти. 
+    * создавать токены только в пределах баунти. Используется, для раздачи баунти. 
     * @param recipient Получатель токенов.
     * @param tokens Количество токенов, которое необходимо создать. 
     */
@@ -1159,7 +1179,7 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
         uint issuedTokenSupply = token.totalSupply();
 
         //Если ICO было завершено до набора софткапа
-        if (issuedTokenSupply < softCap) {
+        if (icoCountTokens < softCap) {
             // Ставим флаги, запрещающие чеканку новых токенов
             token.finishMinting();
             // Передаём владение контрактом создателю токенов
