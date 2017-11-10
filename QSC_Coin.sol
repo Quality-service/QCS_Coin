@@ -427,10 +427,12 @@ contract MintableToken is StandardToken, Ownable {
     //Общий список процедур обмена, которые проводились
     Retreive[] retreiveList;
     
-    // Адрес хранения командного баланса, куда поступят 10% от максимума токенов, 
+    // Адрес хранения командного баланса, куда поступят 7% от проданных токенов, 
     //и будут заморожены до начала возвратов. Возвраты, для этих адресов 
     //выполняться не будут.
     address public teamTokens;
+    // Адрес хранения командного баланса, куда поступят 3% от проданных токенов.
+    address public teamBountyTokens;
 
     //Ивент, вызываемый, при обмене токенов на Ether
     event ReturnCoin(uint count, uint cost);
@@ -494,6 +496,14 @@ contract MintableToken is StandardToken, Ownable {
     */
     function setTeamTokens(address _teamTokens) public onlyOwner {
         teamTokens = _teamTokens;        
+    }
+
+    /**
+    * @dev Позволяет владельцу указать адрес хранилища 'наградных командных' токенов.
+    * @param _teamBountyTokens Новый адрес хранилища токенов
+    */
+    function setTeamBountyTokens(address _teamBountyTokens) public onlyOwner {
+        teamBountyTokens = _teamBountyTokens;        
     }
 
     /**
@@ -1215,11 +1225,18 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
             //программы вознаграждения.
             issuedTokenSupply -= bountyTokensCount;
             //Рассчитываем количество командных токенов - они составят
-            //10 процентов от общей суммы проданных токенов.         
-            uint teamTokensCount = issuedTokenSupply.div(9); 
+            //7 процентов от общей суммы проданных токенов.         
+            uint teamTokensCount = issuedTokenSupply.mul(7).div(90); 
             // Отправляем командные токены, на адрес, работа с которым 
             //будет заблокирована, до наступления стадии обмена.
             token.mint(token.teamTokens(), teamTokensCount);
+            //Рассчитываем количество наградных командных токенов -
+            // они составят 3 процента от общей суммы проданных токенов.         
+            teamTokensCount = issuedTokenSupply.mul(3).div(90); 
+            // Отправляем наградные командные токены, на адрес, не имеющий
+            // никаких ограничений.
+            token.mint(token.teamBountyTokens(), teamTokensCount);
+
             // Ставим флаги, запрещающие чеканку новых токенов
             token.finishMinting();
             // Передаём владение контрактом создателю токенов
