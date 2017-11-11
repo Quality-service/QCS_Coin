@@ -865,6 +865,8 @@ contract SaleBonuses is Ownable {
                 amount = _returnAmount;
                 //Увеличиваем количество купленных токенов
                 purchasedTokens += _purchasedTokens;
+                //Увеличиваем текущее количество созданных токенов
+                count += _purchasedTokens;
             //Цикл идёт до тех пор, пока не будет обменяна вся сумма, или не пройдём последний кап бонусов 
             } while ((amount > 0) && (id < 5));
 
