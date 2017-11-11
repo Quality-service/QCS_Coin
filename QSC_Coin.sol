@@ -588,11 +588,15 @@ contract MintableToken is StandardToken, Ownable {
         uint countReturns = retreiveList.length;
         //Пока у пользователя есть токены, и мы не прошли все пропущенные им 
         //возвраты токенов 
-        while ((id < countReturns) && (!isBalance(user))) {
+        for (uint i = id; i < countReturns; i++) {
+            //Если, к началу итерации у юзера нету 
+            //бабок, то выходим из цикла
+            if (isBalance(user))
+                break;
             //Получаем общее количество меняемых токенов, и
-            fullCount = retreiveList[id].fullCount;
+            fullCount = retreiveList[i].fullCount;
             //общее количество токенов, для данной процедуры обмена
-            retreiveCount = retreiveList[id].retreiveCount;
+            retreiveCount = retreiveList[i].retreiveCount;
             //Умножаем число меняемых токенов на баланс пользователя и
             //делим на общее количество токенов, для данного обмена
             //тем самым, получая количество токенов, которое мы обменяем 
@@ -607,16 +611,12 @@ contract MintableToken is StandardToken, Ownable {
                 count = balances[user];
             }
             //Увеличиваем сумму обмена на нужное количество токенов
-            returnCost += count;
+            returnCost += count.mul(1 ether).div(retreiveList[i].rate);
             //Снимаем указанное количество токенов со счёта запросившего
             balances[user] -= count;
-            //Увеличиваем id
-            id++;
         }
         // Изменяем количество обменов у пользователя
         returnEtherList[user] = countReturns;
-        // Переводим токены в Ether, по текущему курсу.        
-        returnCost = returnCost.mul(1 ether).div(retreiveList[id].rate);
         // Отправляем эфир из хранилища пользователю, в обмен на токены
         user.transfer(returnCost);
     }
