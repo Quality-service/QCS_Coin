@@ -522,7 +522,7 @@ contract MintableToken is StandardToken, Ownable {
     function returnTokens(uint cost, uint rate) public onlyOwner payable {       
         //Получаем количество токенов, которые будут обменяны в течение этой
         //процедуры обмена. Просто делим внесённую сумму, на курс обмена.
-        uint tokens = cost.mul(1 ether).div(rate);
+        uint tokens = cost.mul(rate).div(1 ether);
         //Получаем общее количество токенов, которое должно быть на данный
         //момент, с учётом всех предыдущих процедур обмена.
         uint maxCount;
@@ -573,6 +573,8 @@ contract MintableToken is StandardToken, Ownable {
     * @param user - пользователь, который хочет обмена
     */
     function getEther(address user) public isNotTeam(msg.sender) {
+        //Если обмены уже начались
+        require(exchangeStarted);
         //Если токенов на счету данного пользователя нет - отменяем выполнение.
         require(!isBalance(user));        
         //Получаем id последней полученной стадии возврата
@@ -614,7 +616,7 @@ contract MintableToken is StandardToken, Ownable {
         // Изменяем количество обменов у пользователя
         returnEtherList[user] = countReturns;
         // Переводим токены в Ether, по текущему курсу.        
-        returnCost = returnCost.mul(retreiveList[id].rate).div(1 ether);
+        returnCost = returnCost.mul(1 ether).div(retreiveList[id].rate);
         // Отправляем эфир из хранилища пользователю, в обмен на токены
         user.transfer(returnCost);
     }
@@ -624,7 +626,7 @@ contract MintableToken is StandardToken, Ownable {
     * @param user - пользователь, запросивший возврат.
     * @param rate - текущий курс токена.
     */
-    function returnEther(address user, uint rate) public isNotTeam(msg.sender) {
+    function returnEther(address user, uint rate) public isNotTeam(msg.sender) canMint {
         //Если токенов на счету данного пользователя нет - отменяем выполнение.
         require(!isBalance(user));        
         //Получаем количество токенов у пользователя
@@ -632,7 +634,7 @@ contract MintableToken is StandardToken, Ownable {
         //Обнуляем баланс пользователя
         balances[user] = 0;
         //Получаем количество Ether, которое мы должны вернуть пользователю
-        uint returnCost = balance.mul(1 ether).div(rate);
+        uint returnCost = balance.mul(rate).div(1 ether);
         // Отправляем эфир из хранилища пользователю, в обмен на токены
         user.transfer(returnCost);
     }
@@ -723,14 +725,15 @@ contract QSCCoin is MintableToken {
 contract SaleBonuses is Ownable {
     //Подключение библиотеки безопасной математики
     using SafeMath for uint;
+    //Один токен, со всеми его нулями - 1000000000000000000
     //Верхний предел количества выпущенных токенов, при предпродаже
-    uint hardcapPreIco = 90000;
+    uint hardcapPreIco = 90000000000000000000000;
     //Верхний предел количества выпущенных на продажу токенов
-    uint hardcap = 2275183;
+    uint hardcap = 2275183000000000000000000;
     //Минимальная сумма, которую нужно набрать
-    uint softCap = 500583;
+    uint softCap = 500583000000000000000000;
     //Лимит коинов, которые будут розданы в баунти-программе
-    uint bountyCap = 38562;
+    uint bountyCap = 38562000000000000000000;
     //Массив, хранящий лимиты бонусов
     uint[] bonusesLimits;
 
@@ -742,10 +745,10 @@ contract SaleBonuses is Ownable {
         bonusesLimits.length = 5;
         //Нулевое значение нужно для упрощения функции рассчёта
         bonusesLimits[0] = 0;
-        bonusesLimits[1] = 188679;
-        bonusesLimits[2] = 367250;
-        bonusesLimits[3] = 533916;
-        bonusesLimits[4] = 692646;
+        bonusesLimits[1] = 188679000000000000000000;
+        bonusesLimits[2] = 367250000000000000000000;
+        bonusesLimits[3] = 533916000000000000000000;
+        bonusesLimits[4] = 692646000000000000000000;
     }
 
 
@@ -759,8 +762,8 @@ contract SaleBonuses is Ownable {
     * назначаемая, в случае, если покупатель превысил HardCapPreIco.
     */
     function calculateSaleBonusWithPreSale(uint amount, uint count, uint rate) private  constant returns (uint256 purchasedTokens, uint256 returnAmount) {
-        //Получаем новый курс, с 50 процентной скидкой (за 1 Ether получаем в 2 раза больше токенов)
-        uint rateWithBonus = rate.mul(2);
+        //Получаем новый курс, с 50 процентной скидкой (за 1 токен платим в 2 раза меньше)
+        uint rateWithBonus = rate.div(2);
         //Получаем количество токенов, с учётом бонуса, и сумму возврата, в случае пресечения капа.
         var (a, b) = calculateCapBonus(amount, count, rateWithBonus, hardcapPreIco);
         //Лишние переменные нужны только из-за того, что напрямую вернять результат не получится.
@@ -780,7 +783,7 @@ contract SaleBonuses is Ownable {
     */
     function calculateCapBonus(uint amount, uint count, uint rate, uint _hardCap) private pure returns (uint purchasedTokens, uint returnAmount) {
         //Получаем количество токенов, которое должен получить покупатель, с учётом скидки
-        uint tokens = rate.mul(amount).div(1 ether);
+        uint tokens = amount.mul(1 ether).div(rate);
         //Количество токенов, оставшихся, до текущей границы бонуса
         uint left = _hardCap - count;
         //Если сумма на обмен больше остатка, до границы капа 
@@ -790,7 +793,7 @@ contract SaleBonuses is Ownable {
             //Вычитаем добавленные токены
             tokens -= left;
             //Получаем сумму Ether без бонуса, за токены, которые не вошли в кап.
-            returnAmount = tokens.mul(1 ether).div(rate);
+            returnAmount = tokens.mul(rate).div(1 ether);
         //Если сумма меньше или равна остатку, то добавляем её с бонусом полностью
         } else {  
             //Выставляем токены
@@ -851,7 +854,7 @@ contract SaleBonuses is Ownable {
             do {
                 //Получаем в процентах новую цену, с учётгом скидки
                 rateBonus = 100 - bonus;
-                rateWithBonus = rate.mul(100).div(rateBonus);
+                rateWithBonus = rate.mul(rateBonus).div(100);
                 //Получаем количество токенов, купленных до капа скидки, и сумму, которая в этот лимит не вошла
                 (_purchasedTokens, _returnAmount) = calculateCapBonus(amount, count, rateWithBonus, bonusesLimits[id]);    
                 //Увеличиваем id лимита бонуса
@@ -1198,6 +1201,15 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     function setExchangeRate(address _exchangeRate) public onlyOwner {
         exchangeRate_ = ExchangeRate(_exchangeRate);
     }
+    
+    /**
+    * @dev позволяет владельцу контракта запустить торги токенами, 
+    * что активирует возможность переводов токенов сосчёта на счёт
+    */
+    function startTrading() public onlyOwner {
+        //Запускаем торги
+        token.startTrading();
+    }
 
     /**
     * @dev Позволяет владельцу завершить чеканку токенов. Будут проставлены все ограничивающие
@@ -1304,5 +1316,13 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     function getEtherToReturn() public payable {
         //тут даже вызывать ничего не надо. Просто бабки прийдут на счёт 
         //контракта, и будут возвращаться пользователям в обмен на токены. 
+    }
+    
+    /**
+    * @dev Позволяет узнать баланс юзера.
+    * @param _token Адрес контракта 
+    */
+    function getBalance(address _token) public constant returns(uint) {
+        return token.balanceOf(_token);
     }
 }
