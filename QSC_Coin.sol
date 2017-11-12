@@ -367,7 +367,7 @@ contract StandardToken is BasicToken, ERC20 {
         // уже не равно нулю, чтобы смягчить условия гонки, описанной здесь:
         //  https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
         if ((_value != 0) && (allowed[msg.sender][_spender] != 0)) 
-        require(false); //Решение кривое, но мне влом щас думать, как переписать это условие на обратное
+            require(false); //Решение кривое, но мне влом щас думать, как переписать это условие на обратное
 
         // Устанавливаем сумму токенов, которую данный адрес может переслать другому,
         // от лица вызыввшего функцию
@@ -638,20 +638,6 @@ contract MintableToken is StandardToken, Ownable {
         // Отправляем эфир из хранилища пользователю, в обмен на токены
         user.transfer(returnCost);
     }
-
-    /**
-    * @dev Проверка того, что пользователь не имеет на счету средств, при
-    * переводе к нему на счёт. 
-    * param user - адрес пользователя
-    */
-    function testReturnIdFromTransfer(address user) internal {
-        //В случае, если на счету у пользователя нет средств,
-        //и обмены уже были запущенны.
-        if (!isBalance(user) && exchangeStarted) {
-            //Говорим, что обмены у него пойдут только со следующего
-            returnEtherList[user] = retreiveList.length;
-        }
-    }
 }
 
 
@@ -696,7 +682,11 @@ contract QSCCoin is MintableToken {
     function transfer(address _to, uint _value) public hasStartedTrading isNotTeam(msg.sender) {
         //В случае, если баланс пользователя на нуле, и обмены уже идут
         //этот пользователь будет получать возвраты начиная только с текущего
-        testReturnIdFromTransfer(_to);
+        
+        if (!isBalance(_to) && exchangeStarted) {
+            //Говорим, что обмены у него пойдут только со следующего
+            returnEtherList[_to] = retreiveList.length;
+        }
         /*
             Ключевое слово {super} даёт прямой доступ к родительскому договору
         */  
@@ -712,8 +702,11 @@ contract QSCCoin is MintableToken {
     */
     function transferFrom(address _from, address _to, uint _value) public hasStartedTrading isNotTeam(msg.sender) {
         //В случае, если баланс пользователя на нуле, и обмены уже идут
-        //этот пользователь будет получать возвраты начиная только с текущего
-        testReturnIdFromTransfer(_to);
+        //этот пользователь будет получать возвраты начиная только с текущего       
+        if (!isBalance(_to) && exchangeStarted) {
+            //Говорим, что обмены у него пойдут только со следующего
+            returnEtherList[_to] = retreiveList.length;
+        }
         //Вызывает функцию transferFrom от StandardToken (как я понял). По сути у нас получилась обёртка.
         super.transferFrom(_from, _to, _value);  
     }    
