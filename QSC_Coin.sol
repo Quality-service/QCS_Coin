@@ -446,13 +446,13 @@ contract MintableToken is StandardToken, Ownable {
 
     /**
     * @dev Модификатор, запрещающий перевод токенов с командного кошелька
-    * до наступления фазы обмена
+    * до наступления фазы обмена. В данный момент - не используется.
     */
-    modifier isNotTeam(address sender) {
+  /*  modifier isNotTeam(address sender) {
         //Человек, отправляющий токены не в команде, либо стадия обмена уже началась.
         require((sender != teamTokens) || (exchangeStarted));
         _;
-    }
+    }*/
 
 
     /**
@@ -572,7 +572,7 @@ contract MintableToken is StandardToken, Ownable {
     * @dev функция забирания Ether пользователем
     * @param user - пользователь, который хочет обмена
     */
-    function getEther(address user) public isNotTeam(msg.sender) {
+    function getEther(address user) public { //isNotTeam(msg.sender)
         //Если обмены уже начались
         require(exchangeStarted);
         //Если токенов на счету данного пользователя нет - отменяем выполнение.
@@ -626,7 +626,7 @@ contract MintableToken is StandardToken, Ownable {
     * @param user - пользователь, запросивший возврат.
     * @param rate - текущий курс токена.
     */
-    function returnEther(address user, uint rate) public isNotTeam(msg.sender) canMint {
+    function returnEther(address user, uint rate) public /*isNotTeam(msg.sender)*/ canMint {
         //Если токенов на счету данного пользователя нет - отменяем выполнение.
         require(!isBalance(user));        
         //Получаем количество токенов у пользователя
@@ -679,7 +679,7 @@ contract QSCCoin is MintableToken {
     * @param _to Адрес получателя токенов
     * @param _value КОличество передаваемых токенов
     */
-    function transfer(address _to, uint _value) public hasStartedTrading isNotTeam(msg.sender) {
+    function transfer(address _to, uint _value) public hasStartedTrading { //isNotTeam(msg.sender)
         //В случае, если баланс пользователя на нуле, и обмены уже идут
         //этот пользователь будет получать возвраты начиная только с текущего
         
@@ -700,7 +700,7 @@ contract QSCCoin is MintableToken {
     * @param _to Адрес, кому будут отправлены токены
     * @param _value сумма токенов, для отправки
     */
-    function transferFrom(address _from, address _to, uint _value) public hasStartedTrading isNotTeam(msg.sender) {
+    function transferFrom(address _from, address _to, uint _value) public hasStartedTrading { //isNotTeam(msg.sender)
         //В случае, если баланс пользователя на нуле, и обмены уже идут
         //этот пользователь будет получать возвраты начиная только с текущего       
         if (!isBalance(_to) && exchangeStarted) {
@@ -722,11 +722,11 @@ contract SaleBonuses is Ownable {
     //Верхний предел количества выпущенных токенов, при предпродаже
     uint hardcapPreIco = 90000000000000000000000;
     //Верхний предел количества выпущенных на продажу токенов
-    uint hardcap = 2185183000000000000000000;
+    uint hardcap = 883636000000000000000000;//2185183000000000000000000;
     //Минимальная сумма, которую нужно набрать
-    uint softCap = 500583000000000000000000;
+    uint softCap = 465727000000000000000000;//500583000000000000000000;
     //Лимит коинов, которые будут розданы в баунти-программе
-    uint bountyCap = 38562000000000000000000;
+    uint bountyCap = 15954000000000000000000;//38562000000000000000000;
     //Массив, хранящий лимиты бонусов
     uint[] bonusesLimits;
 
@@ -738,10 +738,10 @@ contract SaleBonuses is Ownable {
         bonusesLimits.length = 5;
         //Нулевое значение нужно для упрощения функции рассчёта
         bonusesLimits[0] = 0;
-        bonusesLimits[1] = 188679000000000000000000;
-        bonusesLimits[2] = 367250000000000000000000;
-        bonusesLimits[3] = 533916000000000000000000;
-        bonusesLimits[4] = 692646000000000000000000;
+        bonusesLimits[1] = 94340000000000000000000;//188679000000000000000000;
+        bonusesLimits[2] = 183626000000000000000000;//367250000000000000000000;
+        bonusesLimits[3] = 266960000000000000000000;//533916000000000000000000;
+        bonusesLimits[4] = 346324000000000000000000;//692646000000000000000000;
     }
 
 
@@ -1232,10 +1232,10 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
             //программы вознаграждения.
             issuedTokenSupply -= bountyTokensCount;
             //Рассчитываем количество командных токенов - они составят
-            //7 процентов от общей суммы проданных токенов.         
-            uint teamTokensCount = issuedTokenSupply.mul(7).div(90); 
-            // Отправляем командные токены, на адрес, работа с которым 
-            //будет заблокирована, до наступления стадии обмена.
+            //10 процентов от общей суммы проданных токенов.         
+            uint teamTokensCount = issuedTokenSupply.div(9); 
+            // Отправляем командные токены, на адрес, не имеющий
+            // никаких ограничений.
             token.mint(token.teamTokens(), teamTokensCount);
             //Рассчитываем количество наградных командных токенов -
             // они составят 3 процента от общей суммы проданных токенов.         
@@ -1319,5 +1319,166 @@ contract MainSale is Ownable, Authorizable, IcoSale, PreIcoSale {
     */
     function getBalance(address _token) public constant returns(uint) {
         return token.balanceOf(_token);
+    }
+}
+
+/**
+* @dev Контракт, реализующий специфически защищённый кошелёк, для хранения
+* собранных средств.
+*/
+contract MultiSig is Ownable {
+    /**
+    * @dev Структура, описывающая подтверждение транзакции
+    */
+    struct MultiTransaction {
+        //Подтверждение транзакции от первого подписывателя
+        address firstSigner;
+        //Подтверждение транзакции от второго подписывателя
+        address secondSigner;
+        //Статус транзакции
+        uint8 status;
+        //Сумма перевода в wei
+        uint cost;
+        //Целевой адрес перевода
+        address to;
+    }
+
+    //Текущее количество созданных транзакций
+    uint transactionsCount = 0;
+    //Первый адрес подписки
+    address private firstSigner;
+    //Второй адрес подписки
+    address private secondSigner;
+    //Список транзакций кошелька
+    mapping(bytes32 => MultiTransaction) transactions;
+
+    /**
+    * @dev модификатор, разрешающий выполнения функции только в том случае, если
+    * оба адреса подписывания были установлены
+    */
+    modifier isSignersContains {        
+        require((firstSigner != address(0)) && (secondSigner != address(0)));
+        _;
+    }
+
+    /**
+    * @dev модификатор, разрешающий выполнения функции только в том случае, если
+    * функцию вызывает один из подписывателей.
+    */
+    modifier ifSigner(address sender) {        
+        require((firstSigner == sender) || (secondSigner == sender));
+        _;
+    }
+
+    /**
+    * @dev просто функцию, по приёму средств добавил. Она нифига не делает, и я 
+    * не уверен, что она вообще нужна, но пусть будет.
+    */
+    function() external payable {}    
+
+    /**
+    * @dev Позволяет узнать баланс кошелька.
+    */
+    function getBalance() public onlyOwner constant returns(uint) {
+        return this.balance;
+    }
+
+    /**
+    * @dev Устанавливаем адрес первого подписывателя платежа
+    */
+    function addFirstSigner(address _firstSigner) public onlyOwner {
+        //Если адрес вообще есть
+        require(_firstSigner != address(0));
+        //Устанавливаем
+        firstSigner = _firstSigner;
+    }
+
+    /**
+    * @dev Устанавливаем адрес второго подписывателя платежа
+    */
+    function addSecondSigner(address _secondSigner) public onlyOwner {
+        //Если адрес вообще есть
+        require(_secondSigner != address(0));
+        //Устанавливаем
+        secondSigner = _secondSigner;
+    }
+
+    /**
+    * @dev Создаём новую транзакцию. Вызвать может только владелец контракта, после добавления двух подписывателей.
+    * @param _to конечный адрес перевода
+    * @param _cost сумма перевода
+    * @return хеш-номер транзакции
+    */
+    function setTransaction(address _to, uint _cost) public onlyOwner isSignersContains constant returns(bytes32) {
+        //Если на счету у нас сумма меньше, чем требуется перевести, то будет выдана ошибка
+        //Если сумма перевода пустая - будет выведена ошибка
+        require((this.balance >= _cost) && (_cost > 0));
+        //Если конечный адрес перевода - пустой, то будет выведена ошибка
+        require(_to != address(0));
+        //Создаём хеш-подпись транзакции
+        bytes32 transactionHash = keccak256(transactionsCount, _cost, _to, owner);
+        //Заполняем поля транзакции
+        //Указываем получателя
+        transactions[transactionHash].to = _to;
+        //Указываем сумму перевода
+        transactions[transactionHash].cost = _cost;
+        //Указываем текущий статус
+        transactions[transactionHash].status = 1;
+        //Возвращаем хеш-подпись данной транзакции
+        return transactionHash;
+    }
+
+    /**
+    * @dev Позволяет выполнить подписывание транзакции. Может быть выполнена только одним из подписывателей,
+    * и только в том случае, если они оба были назначены.
+    * @param transactionHash - хеш-номер транзакции
+    */
+    function signTransaction(bytes32 transactionHash) public isSignersContains ifSigner(msg.sender) {
+        //Если такой транзакции не существует - будет выдана ошибка
+        //Если транзакция уже проведена - будет выведена ошибка
+        require((transactions[transactionHash].status > 0) && (transactions[transactionHash].status < 3));
+        //Если на счету у нас сумма меньше, чем требуется перевести, то будет выдана ошибка
+        require(this.balance >= transactions[transactionHash].cost);
+        //Если подписывает первый подписыватель
+        if (msg.sender == firstSigner) {
+            //Если второй ещё не подписал
+            if (transactions[transactionHash].secondSigner == address(0)) {
+                //Подписываем от имени первого подписывателя
+                transactions[transactionHash].firstSigner = msg.sender;
+                //Увеличиваем значение статуса
+                transactions[transactionHash].status++;
+            //Если уже есть подпись второго
+            } else {
+                //если второй подписыватель действительно тот, за кого себя выдаёт, и у транзакции верный статус
+                if ((transactions[transactionHash].secondSigner == secondSigner) && (transactions[transactionHash].status == 2)) {
+                    //Увеличиваем значение статуса
+                    transactions[transactionHash].status++;
+                    //Проставляем вторую подпись
+                    transactions[transactionHash].firstSigner = msg.sender;
+                    //Отправляем бабки
+                    transactions[transactionHash].to.transfer(transactions[transactionHash].cost);
+                }
+            }
+        //Если подписывает второй подписыватель
+        } else if (msg.sender == secondSigner) {
+            //Если первый ещё не подписал
+            if (transactions[transactionHash].firstSigner == address(0)) {
+                //Подписываем от имени второго подписывателя
+                transactions[transactionHash].secondSigner = msg.sender;
+                //Увеличиваем значение статуса
+                transactions[transactionHash].status++;
+            //Если уже есть подпись первого
+            } else {
+                //если первый подписыватель действительно тот, за кого себя выдаёт, и у транзакции верный статус
+                if ((transactions[transactionHash].firstSigner == firstSigner) && (transactions[transactionHash].status == 2)) {
+                    //Увеличиваем значение статуса
+                    transactions[transactionHash].status++;
+                    //Проставляем вторую подпись
+                    transactions[transactionHash].secondSigner = msg.sender;
+                    //Отправляем бабки
+                    transactions[transactionHash].to.transfer(transactions[transactionHash].cost);
+                }
+            }
+        }
     }
 }
