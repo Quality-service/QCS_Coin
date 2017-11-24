@@ -1350,7 +1350,7 @@ contract MultiSig is Ownable {
     //Второй адрес подписки
     address private secondSigner;
     //Список транзакций кошелька
-    mapping(bytes32 => MultiTransaction) transactions;
+    mapping(bytes32 => MultiTransaction) private transactions;
 
     /**
     * @dev модификатор, разрешающий выполнения функции только в том случае, если
