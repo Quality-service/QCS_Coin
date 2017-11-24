@@ -1,4 +1,4 @@
-pragma solidity ^0.4.11;
+pragma solidity ^0.4.17;
 
 /**
  * @title Ownable
@@ -53,9 +53,9 @@ contract Ownable {
  */
 contract Authorizable {
     //Массив пользователей
-    address[] authorizers;
+    address[] private authorizers;
     //Id авторизуемого в массиве пользователей
-    mapping(address => uint) authorizerIndex;
+    mapping(address => uint) private authorizerIndex;
 
     /**
     * @dev Модификатор, запрещающий выполнение функции кому-либо, кроме авторизованного лица
@@ -270,7 +270,7 @@ contract BasicToken is ERC20Basic {
     using SafeMath for uint;
 
     //Список балансов пользователей
-    mapping(address => uint) balances;
+    mapping(address => uint) public balances;
 
     /**
     * @dev Фикс, для атаки короткими адресами, в ERC20.
@@ -326,7 +326,7 @@ contract StandardToken is BasicToken, ERC20 {
     // Так, тут срань. Короче говоря, эта хрень указывает, для каждого адреса,
     // список адресов, и сумму токенов, которую второй адрес может снять от имени первого.
     // Вроде так.
-    mapping (address => mapping (address => uint)) allowed;
+    mapping (address => mapping (address => uint)) private allowed;
 
 
     /**
@@ -421,11 +421,11 @@ contract MintableToken is StandardToken, Ownable {
     //Флаг запуска обменов
     bool public exchangeStarted = false;
     //Список пользователей, которые ассоциированы с количеством обменов, которые были произведены
-    mapping (address => uint) returnEtherList;
+    mapping (address => uint) public returnEtherList;
     //Хранилище Ether, куда поступает весь Ether, который идёт на обмен
    // address returnTokenVault;
     //Общий список процедур обмена, которые проводились
-    Retreive[] retreiveList;
+    Retreive[] public retreiveList;
     
     // Адрес хранения командного баланса, куда поступят 7% от проданных токенов, 
     //и будут заморожены до начала возвратов. Возвраты, для этих адресов 
@@ -720,15 +720,15 @@ contract SaleBonuses is Ownable {
     using SafeMath for uint;
     //Один токен, со всеми его нулями - 1000000000000000000
     //Верхний предел количества выпущенных токенов, при предпродаже
-    uint hardcapPreIco = 90000000000000000000000;
+    uint public hardcapPreIco = 90000000000000000000000;
     //Верхний предел количества выпущенных на продажу токенов
-    uint hardcap = 883636000000000000000000;//2185183000000000000000000;
+    uint public hardcap = 883636000000000000000000;//2185183000000000000000000;
     //Минимальная сумма, которую нужно набрать
-    uint softCap = 465727000000000000000000;//500583000000000000000000;
+    uint public softCap = 465727000000000000000000;//500583000000000000000000;
     //Лимит коинов, которые будут розданы в баунти-программе
-    uint bountyCap = 15954000000000000000000;//38562000000000000000000;
+    uint public bountyCap = 15954000000000000000000;//38562000000000000000000;
     //Массив, хранящий лимиты бонусов
-    uint[] bonusesLimits;
+    uint[] public bonusesLimits;
 
     /**
     * @dev инициализация контракта рассчёта бонусов
@@ -1344,7 +1344,7 @@ contract MultiSig is Ownable {
     }
 
     //Текущее количество созданных транзакций
-    uint transactionsCount = 0;
+    uint private transactionsCount = 0;
     //Первый адрес подписки
     address private firstSigner;
     //Второй адрес подписки
