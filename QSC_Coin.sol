@@ -1352,6 +1352,11 @@ contract MultiSig is Ownable {
     //Список транзакций кошелька
     mapping(bytes32 => MultiTransaction) private transactions;
 
+    //Событие подписывания транзакции
+    event TransactionSigned(uint signer, uint status);
+    //Событие отправки транзакции
+    event TransactionSended(address to, uint cost);
+
     /**
     * @dev модификатор, разрешающий выполнения функции только в том случае, если
     * оба адреса подписывания были установлены
@@ -1457,8 +1462,12 @@ contract MultiSig is Ownable {
                     transactions[transactionHash].firstSigner = msg.sender;
                     //Отправляем бабки
                     transactions[transactionHash].to.transfer(transactions[transactionHash].cost);
+                    //Вызываем событие отправки транзакции
+                    TransactionSended(transactions[transactionHash].to, transactions[transactionHash].cost);
                 }
             }
+            //Отправляем ивент подписывания транзакции
+            TransactionSigned(1, transactions[transactionHash].status);
         //Если подписывает второй подписыватель
         } else if (msg.sender == secondSigner) {
             //Если первый ещё не подписал
@@ -1477,8 +1486,12 @@ contract MultiSig is Ownable {
                     transactions[transactionHash].secondSigner = msg.sender;
                     //Отправляем бабки
                     transactions[transactionHash].to.transfer(transactions[transactionHash].cost);
+                    //Вызываем событие отправки транзакции
+                    TransactionSended(transactions[transactionHash].to, transactions[transactionHash].cost);
                 }
             }
+            //Отправляем ивент подписывания транзакции
+            TransactionSigned(2, transactions[transactionHash].status);
         }
     }
 }
