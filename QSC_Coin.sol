@@ -1392,8 +1392,8 @@ contract MultiSig is Ownable {
     * @dev Устанавливаем адрес первого подписывателя платежа
     */
     function addFirstSigner(address _firstSigner) public onlyOwner {
-        //Если адрес вообще есть
-        require(_firstSigner != address(0));
+        //Если адрес вообще есть, и первый подписыватель не был установлен
+        require((_firstSigner != address(0)) && (firstSigner == address(0)));
         //Устанавливаем
         firstSigner = _firstSigner;
     }
@@ -1402,8 +1402,8 @@ contract MultiSig is Ownable {
     * @dev Устанавливаем адрес второго подписывателя платежа
     */
     function addSecondSigner(address _secondSigner) public onlyOwner {
-        //Если адрес вообще есть
-        require(_secondSigner != address(0));
+        //Если адрес вообще есть, и второй подписыватель не был установлен
+        require((_secondSigner != address(0)) && (secondSigner == address(0)));
         //Устанавливаем
         secondSigner = _secondSigner;
     }
